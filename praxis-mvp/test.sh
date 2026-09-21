@@ -11,7 +11,6 @@ for command in oc curl jq; do command -v "$command" >/dev/null || { printf 'ERRO
 source "$state_file"
 # shellcheck disable=SC1090
 source "$images_file"
-: "${PRAXIS_IMAGE:?images file is missing PRAXIS_IMAGE}"
 : "${MODEL_NAME:?workload file is missing MODEL_NAME}"
 : "${PROVIDER_MODEL:?workload file is missing PROVIDER_MODEL}"
 
@@ -25,9 +24,9 @@ wait_for() {
 
 wait_for 'ExternalProvider' "test \"\$(oc get externalprovider praxis-mvp-provider-a -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
 wait_for 'ExternalModel' "test \"\$(oc get externalmodel praxis-mvp-demo -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
-wait_for 'Praxis' "oc get deployment -n '$TENANT_NAMESPACE' -l app=praxis -o json | jq -e '.items[0].status.availableReplicas == 1'"
-praxis_image="$(oc get pod -n "$TENANT_NAMESPACE" -l app=praxis -o jsonpath='{.items[0].spec.containers[0].image}')"
-[[ "$praxis_image" == "$PRAXIS_IMAGE" ]] || { printf 'ERROR: Praxis runs %s, expected %s\n' "$praxis_image" "$PRAXIS_IMAGE" >&2; exit 1; }
+# The standalone praxis-ai hop was removed from the dataplane; payload-processing
+# in the Gateway namespace is now the only Praxis component to wait on.
+wait_for 'payload-processing' "oc get deployment payload-processing -n '$GATEWAY_NAMESPACE' -o json | jq -e '.status.availableReplicas == 1'"
 wait_for 'MaaSSubscription' "test \"\$(oc get maassubscription praxis-mvp -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Active"
 
 host="$(oc get gateway "$GATEWAY_NAME" -n "$GATEWAY_NAMESPACE" -o jsonpath='{.status.addresses[0].value}')"

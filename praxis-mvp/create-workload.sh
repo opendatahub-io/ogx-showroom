@@ -279,6 +279,10 @@ tenant_namespace="$(oc get aitenant "$tenant" -n ai-tenants -o jsonpath='{.statu
 
 oc create secret generic praxis-mvp-provider-credentials -n "$tenant_namespace" \
   --from-literal=api-key="$LITEMAAS_API_KEY" --dry-run=client -o yaml | oc apply -f -
+# The apikey-injection secret-watcher only caches Secrets carrying this label, so
+# without it the provider credential never reaches the store and requests 500.
+oc label secret/praxis-mvp-provider-credentials -n "$tenant_namespace" \
+  inference.llm-d.ai/ipp-managed=true app.kubernetes.io/managed-by=praxis-mvp --overwrite
 user="$(oc whoami)"
 oc apply -f - <<EOF
 apiVersion: inference.opendatahub.io/v1alpha1

@@ -167,8 +167,9 @@ spec:
             args:
             - --leader-elect
             - --health-probe-bind-address=:8081
-            - --praxis-image=$praxis_image
-            - --praxis-image-pull-policy=IfNotPresent
+            # Keep the RHOAI-supplied ExtProc image. The backslash escapes \$() for
+            # Kyverno (legacy variable syntax); kubelet then expands the env var.
+            - --image=\\\$(RELATED_IMAGE_ODH_PRAXIS_EXTPROC_IMAGE)
             - --known-cluster=provider-praxis-mvp-provider-a
             - --known-cluster=provider-praxis-mvp-provider-b
   - name: maas-controller
