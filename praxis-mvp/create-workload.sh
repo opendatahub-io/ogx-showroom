@@ -277,6 +277,16 @@ oc wait --for=condition=Ready aitenant/"$tenant" -n ai-tenants --timeout="$timeo
 tenant_namespace="$(oc get aitenant "$tenant" -n ai-tenants -o jsonpath='{.status.tenantNamespace}')"
 [[ -n "$tenant_namespace" ]] || { printf 'ERROR: MaaS did not report a tenant namespace\n' >&2; exit 1; }
 
+# Annotating the AITenant alone is not enough: ai-gateway-controller reads the
+# per-tenant MaaSTenantConfig, so without this the tenant never switches to
+# Praxis payload processing and extproc.yaml comes up without the model.
+oc wait --for=create maastenantconfig/default-tenant -n "$tenant_namespace" --timeout="$timeout"
+oc annotate maastenantconfig/default-tenant -n "$tenant_namespace" \
+  maas.opendatahub.io/payload-processing-type=praxis --overwrite
+oc wait maastenantconfig/default-tenant -n "$tenant_namespace" \
+  --for=jsonpath='{.metadata.annotations.maas\.opendatahub\.io/payload-processing-status}'=steady \
+  --timeout="$timeout"
+
 oc create secret generic praxis-mvp-provider-credentials -n "$tenant_namespace" \
   --from-literal=api-key="$LITEMAAS_API_KEY" --dry-run=client -o yaml | oc apply -f -
 # The apikey-injection secret-watcher only caches Secrets carrying this label, so
