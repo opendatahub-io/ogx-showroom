@@ -16,13 +16,17 @@ controller_ref="${CONTROLLER_REF:-main}"
 maas_ref="${MAAS_REF:-main}"
 operator_ref="${AI_GATEWAY_OPERATOR_REF:-main}"
 ogx_operator_ref="${OGX_K8S_OPERATOR_REF:-main}"
-praxis_ref="${PRAXIS_REF:-main}"
+praxis_extproc_ref="${PRAXIS_EXTPROC_REF:-main}"
 rebase_sources=false
+# The dataplane runs the RHOAI-supplied ExtProc image by default. Opt in only to
+# test local praxis-extproc changes: it is a from-scratch Rust build.
+build_extproc="${PRAXIS_MVP_BUILD_EXTPROC:-false}"
 
 while (($#)); do
   case "$1" in
     --rebase) rebase_sources=true ;;
-    -h|--help) printf 'Usage: %s [--rebase]\n' "$0"; exit 0 ;;
+    --build-extproc) build_extproc=true ;;
+    -h|--help) printf 'Usage: %s [--rebase] [--build-extproc]\n' "$0"; exit 0 ;;
     *) printf 'ERROR: unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
   shift
@@ -112,7 +116,11 @@ controller_sha="$(prepare_source controller https://github.com/opendatahub-io/ai
 maas_sha="$(prepare_source maas https://github.com/opendatahub-io/models-as-a-service.git "$maas_ref")"
 prepare_source operator https://github.com/opendatahub-io/ai-gateway-operator.git "$operator_ref" >/dev/null
 ogx_operator_sha="$(prepare_source ogx-operator https://github.com/red-hat-data-services/ogx-k8s-operator.git "$ogx_operator_ref")"
-praxis_sha="$(prepare_source praxis https://github.com/praxis-proxy/ai.git "$praxis_ref")"
+sources=(controller maas operator ogx-operator)
+if [[ "$build_extproc" == true ]]; then
+  praxis_extproc_sha="$(prepare_source praxis-extproc https://github.com/opendatahub-io/praxis-extproc.git "$praxis_extproc_ref")"
+  sources+=(praxis-extproc)
+fi
 
 if [[ "${PRAXIS_MVP_PREPARE_SOURCES_ONLY:-false}" == true ]]; then
   printf 'Persistent sources are ready in %s\n' "$source_dir"
@@ -122,9 +130,11 @@ fi
 controller_image="$(build_push ai-gateway-controller "$controller_sha" "$source_dir/controller" "$source_dir/controller/Dockerfile")"
 maas_image="$(build_push maas-controller "$maas_sha" "$source_dir/maas" "$source_dir/maas/maas-controller/Dockerfile")"
 ogx_operator_image="$(build_push ogx-k8s-operator "$ogx_operator_sha" "$source_dir/ogx-operator" "$source_dir/ogx-operator/Dockerfile")"
-praxis_image="$(build_push praxis-ai "$praxis_sha" "$source_dir/praxis" "$source_dir/praxis/Containerfile")"
+if [[ "$build_extproc" == true ]]; then
+  praxis_extproc_image="$(build_push praxis-extproc "$praxis_extproc_sha" "$source_dir/praxis-extproc" "$source_dir/praxis-extproc/Containerfile")"
+fi
 
-for name in controller maas operator ogx-operator praxis ; do
+for name in "${sources[@]}"; do
   cp -a "$source_dir/$name" "$run_dir/src/$name"
 done
 
@@ -137,14 +147,27 @@ MAAS_SHA=$maas_sha
 MAAS_IMAGE=$maas_image
 OGX_K8S_OPERATOR_SHA=$ogx_operator_sha
 OGX_K8S_OPERATOR_IMAGE=$ogx_operator_image
-PRAXIS_SHA=$praxis_sha
-PRAXIS_IMAGE=$praxis_image
 EOF
+if [[ "$build_extproc" == true ]]; then
+  cat >>"$run_dir/images.env" <<EOF
+PRAXIS_EXTPROC_SHA=$praxis_extproc_sha
+PRAXIS_EXTPROC_IMAGE=$praxis_extproc_image
+EOF
+fi
 cp "$run_dir/images.env" "$script_dir/artifacts/images.env"
 
 if ! oc get deployment kyverno-admission-controller -n kyverno >/dev/null 2>&1; then
   oc apply --server-side -f https://github.com/kyverno/kyverno/releases/download/v1.12.1/install.yaml
   oc wait --for=condition=available deployment/kyverno-admission-controller -n kyverno --timeout=5m
+fi
+
+if [[ "$build_extproc" == true ]]; then
+  extproc_image_arg="--image=$praxis_extproc_image"
+else
+  # Keep the RHOAI-supplied ExtProc image. The backslash escapes $() for Kyverno
+  # (legacy variable syntax); kubelet then expands the env var.
+  # shellcheck disable=SC2016
+  extproc_image_arg='--image=\$(RELATED_IMAGE_ODH_PRAXIS_EXTPROC_IMAGE)'
 fi
 
 oc apply -f - <<EOF
@@ -167,9 +190,7 @@ spec:
             args:
             - --leader-elect
             - --health-probe-bind-address=:8081
-            # Keep the RHOAI-supplied ExtProc image. The backslash escapes \$() for
-            # Kyverno (legacy variable syntax); kubelet then expands the env var.
-            - --image=\\\$(RELATED_IMAGE_ODH_PRAXIS_EXTPROC_IMAGE)
+            - $extproc_image_arg
             - --known-cluster=provider-praxis-mvp-provider-a
             - --known-cluster=provider-praxis-mvp-provider-b
   - name: maas-controller
@@ -188,13 +209,6 @@ spec:
           containers:
           - name: manager
             image: "$ogx_operator_image"
-  - name: praxis
-    match: {any: [{resources: {kinds: [Pod]}}]}
-    mutate:
-      foreach:
-      - list: request.object.spec.containers
-        preconditions: {all: [{key: "{{ element.image }}", operator: AnyIn, value: ["*praxis-ai*"]}]}
-        patchStrategicMerge: {spec: {containers: [{name: "{{ element.name }}", image: "$praxis_image"}]}}
 EOF
 oc wait --for=condition=Ready clusterpolicy/praxis-mvp-image-swap --timeout=2m
 printf 'Images and Kyverno policy are ready. State: %s\n' "$run_dir/images.env"

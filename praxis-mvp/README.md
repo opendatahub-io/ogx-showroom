@@ -15,11 +15,18 @@ podman login quay.io
 ```
 
 `build-images.sh` always uses unique Quay tags and refuses a tag that already
-exists. It builds the AI Gateway controller, MaaS controller, OGX Kubernetes
-operator, and Praxis images. It also checks out the AI Gateway operator for the
-manifests applied by `create-workload.sh`. Override a source revision with
-`CONTROLLER_REF`, `MAAS_REF`, `AI_GATEWAY_OPERATOR_REF`,
-`OGX_K8S_OPERATOR_REF`, or `PRAXIS_REF`.
+exists. It builds the AI Gateway controller, MaaS controller, and OGX Kubernetes
+operator images. It also checks out the AI Gateway operator for the manifests
+applied by `create-workload.sh`. Override a source revision with
+`CONTROLLER_REF`, `MAAS_REF`, `AI_GATEWAY_OPERATOR_REF`, or
+`OGX_K8S_OPERATOR_REF`.
+
+The dataplane ExtProc is the RHOAI-supplied image by default. To test local
+`opendatahub-io/praxis-extproc` changes, pass `--build-extproc` (or set
+`PRAXIS_MVP_BUILD_EXTPROC=true`): the script then builds that repository, pins
+the AI Gateway controller's `--image` to the result, and records it in
+`images.env` as `PRAXIS_EXTPROC_IMAGE`. Override its revision with
+`PRAXIS_EXTPROC_REF`.
 
 Images go to your own registry namespace: by default
 `quay.io/<your quay login>/praxis-mvp`, using the account you logged in to with
@@ -36,7 +43,7 @@ The workload opts the default MaaS tenant into Praxis and adds a LiteMaaS
 ExternalProvider for `Qwen2.5-VL-7B-Instruct`. A second tenant is not used
 because multi-tenant MaaS callback routing remains unqualified. The test
 verifies authenticated LiteMaaS routing using `Qwen2.5-VL-7B-Instruct`,
-unknown-model handling, the custom Praxis image, and preservation and
+unknown-model handling, Praxis payload processing, and preservation and
 availability of the pre-existing OGXServer.
 
 The client-facing model name currently matches the LiteMaaS provider model.
