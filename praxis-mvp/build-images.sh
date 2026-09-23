@@ -193,6 +193,9 @@ spec:
             - $extproc_image_arg
             - --known-cluster=provider-praxis-mvp-provider-a
             - --known-cluster=provider-praxis-mvp-provider-b
+            # The allowlist is static, so the optional OpenAI provider is always
+            # listed. An entry with no matching ExternalProvider is inert.
+            - --known-cluster=provider-praxis-mvp-provider-openai
   - name: maas-controller
     match: {any: [{resources: {kinds: [Pod], selector: {matchLabels: {control-plane: maas-controller}}}}]}
     mutate:

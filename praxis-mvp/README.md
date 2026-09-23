@@ -46,6 +46,19 @@ verifies authenticated LiteMaaS routing using `Qwen2.5-VL-7B-Instruct`,
 unknown-model handling, Praxis payload processing, and preservation and
 availability of the pre-existing OGXServer.
 
+A second, optional ExternalProvider points straight at OpenAI. It is created only
+when `PRAXIS_MVP_OPENAI_API_KEY` or `OPENAI_API_KEY` is set; otherwise
+`create-workload.sh` prints a skip line and `test.sh` runs the LiteMaaS checks
+alone. When it is configured, both models share the `praxis-mvp` subscription and
+auth policy, so the single MaaS API key `test.sh` issues covers both routes.
+Override the endpoint with `PRAXIS_MVP_OPENAI_ENDPOINT` (default `api.openai.com`)
+and the provider model with `PRAXIS_MVP_OPENAI_MODEL` (default `gpt-4o-mini`).
+
+```bash
+OPENAI_API_KEY=sk-... ./praxis-mvp/create-workload.sh
+./praxis-mvp/test.sh
+```
+
 The client-facing model name currently matches the LiteMaaS provider model.
 `MODEL_TRANSLATION_BUG.md` tracks the missing `targetModel` translation needed
 to restore a stable MaaS alias.

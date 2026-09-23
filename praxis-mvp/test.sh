@@ -24,6 +24,13 @@ wait_for() {
 
 wait_for 'ExternalProvider' "test \"\$(oc get externalprovider praxis-mvp-provider-a -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
 wait_for 'ExternalModel' "test \"\$(oc get externalmodel praxis-mvp-demo -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
+# The OpenAI provider is optional: create-workload.sh leaves OPENAI_MODEL_NAME
+# empty when no key was available, and the LiteMaaS checks still run alone.
+if [[ -n "${OPENAI_MODEL_NAME:-}" ]]; then
+  : "${OPENAI_PROVIDER_MODEL:?workload file is missing OPENAI_PROVIDER_MODEL}"
+  wait_for 'OpenAI ExternalProvider' "test \"\$(oc get externalprovider praxis-mvp-provider-openai -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
+  wait_for 'OpenAI ExternalModel' "test \"\$(oc get externalmodel '$OPENAI_MODEL_NAME' -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
+fi
 # The standalone praxis-ai hop was removed from the dataplane. The cluster carries
 # several payload-processing Deployments; the Praxis one for this workload is
 # payload-processing-external-model, rendered into the tenant namespace once the
@@ -56,17 +63,24 @@ printf 'Authorization: Bearer %s\n' "$key" >"$tmp_dir/key-header"
 chmod 600 "$tmp_dir/key-header"
 rm -f "$tmp_dir/key.json"
 
-url="https://$host/$TENANT_NAMESPACE/$MODEL_NAME/v1/chat/completions"
-body="{\"model\":\"$MODEL_NAME\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: LiteMaaS reachable\"}],\"max_tokens\":32}"
-request() {
-  curl -ksS --max-time 60 -o "$tmp_dir/response.json" -w '%{http_code}' \
-    -H @"$tmp_dir/key-header" -H 'Content-Type: application/json' --data "$body" "$url"
+# Send a chat completion for one client-facing model and confirm the response
+# came back from the provider model that Praxis was supposed to route to.
+check_model() {
+  local model="$1" expected="$2" label="$3"
+  local out="$tmp_dir/response-$model.json" url body status
+  url="https://$host/$TENANT_NAMESPACE/$model/v1/chat/completions"
+  body="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: $label reachable\"}],\"max_tokens\":32}"
+  status="$(curl -ksS --max-time 60 -o "$out" -w '%{http_code}' \
+    -H @"$tmp_dir/key-header" -H 'Content-Type: application/json' --data "$body" "$url")"
+  [[ "$status" == 200 ]] || { printf 'ERROR: %s gateway request returned HTTP %s\n' "$label" "$status" >&2; cat "$out" >&2; exit 1; }
+  cat "$out"
+  jq -e --arg model "$expected" '.model | contains($model)' "$out" >/dev/null || { printf 'ERROR: %s response did not use the %s model\n' "$label" "$expected" >&2; exit 1; }
 }
 
-status="$(request)"
-[[ "$status" == 200 ]] || { printf 'ERROR: gateway request returned HTTP %s\n' "$status" >&2; exit 1; }
-cat "$tmp_dir/response.json"
-jq -e --arg model "$PROVIDER_MODEL" '.model | contains($model)' "$tmp_dir/response.json" >/dev/null || { printf 'ERROR: response did not use the LiteMaaS Qwen model\n' >&2; exit 1; }
+check_model "$MODEL_NAME" "$PROVIDER_MODEL" LiteMaaS
+if [[ -n "${OPENAI_MODEL_NAME:-}" ]]; then
+  check_model "$OPENAI_MODEL_NAME" "$OPENAI_PROVIDER_MODEL" OpenAI
+fi
 
 missing_status="$(curl -ksS --max-time 30 -o /dev/null -w '%{http_code}' -H @"$tmp_dir/key-header" \
   -H 'Content-Type: application/json' --data '{"model":"missing","messages":[]}' \
@@ -80,4 +94,8 @@ if [[ -n "$OGX_UID" ]]; then
     [[ "$(oc get pod -n "$APPLICATIONS_NAMESPACE" -l app=ogx -o jsonpath='{.items[0].metadata.uid}')" == "$OGX_POD_UID" ]] || { printf 'ERROR: pre-existing OGX pod was replaced\n' >&2; exit 1; }
   fi
 fi
-printf 'PASS: ExternalModel routed through Praxis to LiteMaaS and OGX was preserved.\n'
+if [[ -n "${OPENAI_MODEL_NAME:-}" ]]; then
+  printf 'PASS: ExternalModels routed through Praxis to LiteMaaS and OpenAI, and OGX was preserved.\n'
+else
+  printf 'PASS: ExternalModel routed through Praxis to LiteMaaS and OGX was preserved.\n'
+fi

@@ -11,6 +11,12 @@ infra_namespace="${PRAXIS_MVP_INFRA_NAMESPACE:-redhat-ai-gateway-infra}"
 rhcl_namespace="${PRAXIS_MVP_RHCL_NAMESPACE:-kuadrant-system}"
 timeout="${PRAXIS_MVP_TIMEOUT:-15m}"
 
+# Optional second ExternalProvider pointing at OpenAI itself. It is skipped when
+# no key is present so the LiteMaaS-only flow keeps working unchanged.
+openai_api_key="${PRAXIS_MVP_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}"
+openai_endpoint="${PRAXIS_MVP_OPENAI_ENDPOINT:-api.openai.com}"
+openai_target_model="${PRAXIS_MVP_OPENAI_MODEL:-gpt-4o-mini}"
+
 for command in oc jq openssl yq; do command -v "$command" >/dev/null || { printf 'ERROR: %s is required\n' "$command" >&2; exit 1; }; done
 [[ -f "$images_file" ]] || { printf 'ERROR: run build-images.sh first\n' >&2; exit 1; }
 : "${LITEMAAS_API_KEY:?set LITEMAAS_API_KEY before creating the workload}"
@@ -293,6 +299,46 @@ oc create secret generic praxis-mvp-provider-credentials -n "$tenant_namespace" 
 # without it the provider credential never reaches the store and requests 500.
 oc label secret/praxis-mvp-provider-credentials -n "$tenant_namespace" \
   inference.llm-d.ai/ipp-managed=true app.kubernetes.io/managed-by=praxis-mvp --overwrite
+
+openai_model_name=""
+openai_manifest=""
+if [[ -n "$openai_api_key" ]]; then
+  openai_model_name=praxis-mvp-openai
+  oc create secret generic praxis-mvp-openai-credentials -n "$tenant_namespace" \
+    --from-literal=api-key="$openai_api_key" --dry-run=client -o yaml | oc apply -f -
+  oc label secret/praxis-mvp-openai-credentials -n "$tenant_namespace" \
+    inference.llm-d.ai/ipp-managed=true app.kubernetes.io/managed-by=praxis-mvp --overwrite
+  openai_manifest="---
+apiVersion: inference.opendatahub.io/v1alpha1
+kind: ExternalProvider
+metadata: {name: praxis-mvp-provider-openai, namespace: $tenant_namespace, labels: {app.kubernetes.io/managed-by: praxis-mvp}}
+spec: {provider: openai, endpoint: $openai_endpoint, auth: {type: apikey, secretRef: {name: praxis-mvp-openai-credentials}}}
+---
+apiVersion: inference.opendatahub.io/v1alpha1
+kind: ExternalModel
+metadata: {name: $openai_model_name, namespace: $tenant_namespace, labels: {app.kubernetes.io/managed-by: praxis-mvp}}
+spec:
+  modelName: $openai_model_name
+  externalProviderRefs:
+  - {ref: {name: praxis-mvp-provider-openai}, targetModel: $openai_target_model, apiFormat: openai-chat, path: /v1/chat/completions, weight: 1}
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata: {name: $openai_model_name, namespace: $tenant_namespace, labels: {app.kubernetes.io/managed-by: praxis-mvp}}
+spec: {modelRef: {kind: ExternalModel, name: $openai_model_name}}"
+else
+  printf 'Skipping the OpenAI provider: neither PRAXIS_MVP_OPENAI_API_KEY nor OPENAI_API_KEY is set\n'
+fi
+
+# Both models share the praxis-mvp subscription and auth policy, so one MaaS API
+# key issued by test.sh covers the LiteMaaS and OpenAI routes.
+subscription_model_refs="{name: praxis-mvp-demo, namespace: $tenant_namespace, tokenRateLimits: [{limit: 10000, window: 1m}]}"
+authpolicy_model_refs="{name: praxis-mvp-demo, namespace: $tenant_namespace}"
+if [[ -n "$openai_model_name" ]]; then
+  subscription_model_refs="$subscription_model_refs, {name: $openai_model_name, namespace: $tenant_namespace, tokenRateLimits: [{limit: 10000, window: 1m}]}"
+  authpolicy_model_refs="$authpolicy_model_refs, {name: $openai_model_name, namespace: $tenant_namespace}"
+fi
+
 user="$(oc whoami)"
 oc apply -f - <<EOF
 apiVersion: inference.opendatahub.io/v1alpha1
@@ -312,16 +358,17 @@ apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSModelRef
 metadata: {name: praxis-mvp-demo, namespace: $tenant_namespace, labels: {app.kubernetes.io/managed-by: praxis-mvp}}
 spec: {modelRef: {kind: ExternalModel, name: praxis-mvp-demo}}
+$openai_manifest
 ---
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata: {name: praxis-mvp, namespace: $tenant_namespace, labels: {app.kubernetes.io/managed-by: praxis-mvp}}
-spec: {owner: {users: [$user]}, modelRefs: [{name: praxis-mvp-demo, namespace: $tenant_namespace, tokenRateLimits: [{limit: 10000, window: 1m}]}], priority: 10}
+spec: {owner: {users: [$user]}, modelRefs: [$subscription_model_refs], priority: 10}
 ---
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSAuthPolicy
 metadata: {name: praxis-mvp, namespace: $tenant_namespace, labels: {app.kubernetes.io/managed-by: praxis-mvp}}
-spec: {modelRefs: [{name: praxis-mvp-demo, namespace: $tenant_namespace}], subjects: {users: [$user]}}
+spec: {modelRefs: [$authpolicy_model_refs], subjects: {users: [$user]}}
 EOF
 
 cat >"$script_dir/artifacts/workload.env" <<EOF
@@ -332,6 +379,8 @@ GATEWAY_NAMESPACE=$gateway_namespace
 APPLICATIONS_NAMESPACE=$applications_namespace
 MODEL_NAME=praxis-mvp-demo
 PROVIDER_MODEL=Qwen2.5-VL-7B-Instruct
+OPENAI_MODEL_NAME=$openai_model_name
+OPENAI_PROVIDER_MODEL=$([[ -n "$openai_model_name" ]] && printf '%s' "$openai_target_model")
 OGX_UID=$ogx_uid
 OGX_POD_UID=$ogx_pod_uid
 EOF
