@@ -24,9 +24,12 @@ wait_for() {
 
 wait_for 'ExternalProvider' "test \"\$(oc get externalprovider praxis-mvp-provider-a -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
 wait_for 'ExternalModel' "test \"\$(oc get externalmodel praxis-mvp-demo -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
-# The standalone praxis-ai hop was removed from the dataplane; payload-processing
-# in the Gateway namespace is now the only Praxis component to wait on.
-wait_for 'payload-processing' "oc get deployment payload-processing -n '$GATEWAY_NAMESPACE' -o json | jq -e '.status.availableReplicas == 1'"
+# The standalone praxis-ai hop was removed from the dataplane. The cluster carries
+# several payload-processing Deployments; the Praxis one for this workload is
+# payload-processing-external-model, rendered into the tenant namespace once the
+# MaaSTenantConfig is switched to praxis. The payload-processing and
+# payload-pre-processing Deployments in the Gateway namespace are not part of this path.
+wait_for 'payload-processing-external-model' "oc get deployment payload-processing-external-model -n '$TENANT_NAMESPACE' -o json | jq -e '.status.availableReplicas == 1'"
 wait_for 'MaaSSubscription' "test \"\$(oc get maassubscription praxis-mvp -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Active"
 
 host="$(oc get gateway "$GATEWAY_NAME" -n "$GATEWAY_NAMESPACE" -o jsonpath='{.status.addresses[0].value}')"
