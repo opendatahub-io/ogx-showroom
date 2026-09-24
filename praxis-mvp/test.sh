@@ -27,9 +27,10 @@ wait_for 'ExternalModel' "test \"\$(oc get externalmodel praxis-mvp-demo -n '$TE
 # The OpenAI provider is optional: create-workload.sh leaves OPENAI_MODEL_NAME
 # empty when no key was available, and the LiteMaaS checks still run alone.
 if [[ -n "${OPENAI_MODEL_NAME:-}" ]]; then
+  : "${OPENAI_EXTERNAL_MODEL_NAME:?workload file is missing OPENAI_EXTERNAL_MODEL_NAME}"
   : "${OPENAI_PROVIDER_MODEL:?workload file is missing OPENAI_PROVIDER_MODEL}"
   wait_for 'OpenAI ExternalProvider' "test \"\$(oc get externalprovider praxis-mvp-provider-openai -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
-  wait_for 'OpenAI ExternalModel' "test \"\$(oc get externalmodel '$OPENAI_MODEL_NAME' -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
+  wait_for 'OpenAI ExternalModel' "test \"\$(oc get externalmodel '$OPENAI_EXTERNAL_MODEL_NAME' -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Ready"
 fi
 # The standalone praxis-ai hop was removed from the dataplane. The cluster carries
 # several payload-processing Deployments; the Praxis one for this workload is
