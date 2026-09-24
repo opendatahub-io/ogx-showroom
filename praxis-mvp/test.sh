@@ -70,17 +70,23 @@ check_model() {
   local out="$tmp_dir/response-$model.json" url body status
   url="https://$host/$TENANT_NAMESPACE/$model/v1/chat/completions"
   body="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: $label reachable\"}],\"max_tokens\":32}"
-  status="$(curl -ksS --max-time 60 -o "$out" -w '%{http_code}' \
-    -H @"$tmp_dir/key-header" -H 'Content-Type: application/json' --data "$body" "$url")"
-  [[ "$status" == 200 ]] || { printf 'ERROR: %s gateway request returned HTTP %s\n' "$label" "$status" >&2; cat "$out" >&2; exit 1; }
+  if ! status="$(curl -ksS --max-time 60 -o "$out" -w '%{http_code}' \
+    -H @"$tmp_dir/key-header" -H 'Content-Type: application/json' --data "$body" "$url")"; then
+    printf 'ERROR: %s gateway request failed\n' "$label" >&2
+    cat "$out" >&2
+    return 1
+  fi
+  [[ "$status" == 200 ]] || { printf 'ERROR: %s gateway request returned HTTP %s\n' "$label" "$status" >&2; cat "$out" >&2; return 1; }
   cat "$out"
-  jq -e --arg model "$expected" '.model | contains($model)' "$out" >/dev/null || { printf 'ERROR: %s response did not use the %s model\n' "$label" "$expected" >&2; exit 1; }
+  jq -e --arg model "$expected" '.model | contains($model)' "$out" >/dev/null || { printf 'ERROR: %s response did not use the %s model\n' "$label" "$expected" >&2; return 1; }
 }
 
-check_model "$MODEL_NAME" "$PROVIDER_MODEL" LiteMaaS
+model_check_failed=0
+check_model "$MODEL_NAME" "$PROVIDER_MODEL" LiteMaaS || model_check_failed=1
 if [[ -n "${OPENAI_MODEL_NAME:-}" ]]; then
-  check_model "$OPENAI_MODEL_NAME" "$OPENAI_PROVIDER_MODEL" OpenAI
+  check_model "$OPENAI_MODEL_NAME" "$OPENAI_PROVIDER_MODEL" OpenAI || model_check_failed=1
 fi
+(( model_check_failed == 0 )) || exit 1
 
 missing_status="$(curl -ksS --max-time 30 -o /dev/null -w '%{http_code}' -H @"$tmp_dir/key-header" \
   -H 'Content-Type: application/json' --data '{"model":"missing","messages":[]}' \
