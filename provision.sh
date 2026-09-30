@@ -49,6 +49,9 @@ oc wait --for=jsonpath='{.status.phase}'=Ready datasciencecluster/default-dsc --
 echo ""
 
 # Step 2: Infrastructure
+echo "Checking Helm release status..."
+helm status ogx-infra -n "${NAMESPACE}" 2>&1 | head -5 || echo "  No existing ogx-infra release"
+
 echo "Installing ogx-infra..."
 helm upgrade --install ogx-infra "${SCRIPT_DIR}/charts/ogx-infra" \
   -n "${NAMESPACE}" --create-namespace --wait --timeout 10m
@@ -58,11 +61,21 @@ echo "Infrastructure ready."
 echo ""
 
 # Step 3: OGX
+echo "Checking Helm release status..."
+helm status ogx-rhoai -n "${NAMESPACE}" 2>&1 | head -5 || echo "  No existing ogx-rhoai release"
+
 echo "Installing ogx-rhoai..."
 helm upgrade --install ogx-rhoai "${SCRIPT_DIR}/charts/ogx-rhoai" \
   -n "${NAMESPACE}" -f "${VALUES_FILE}" --wait --timeout 15m
 
 echo ""
+echo "Current OGXServer status:"
+oc get ogxserver/ogx-distribution -n "${NAMESPACE}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "  not found"
+echo ""
+echo "Pod status:"
+oc get pods -n "${NAMESPACE}" --no-headers 2>/dev/null || echo "  No pods found"
+echo ""
+
 echo "Waiting for OGXServer to be ready..."
 oc wait --for=jsonpath='{.status.phase}'=Ready ogxserver/ogx-distribution \
   -n "${NAMESPACE}" --timeout=600s
