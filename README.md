@@ -1,4 +1,4 @@
-# OGX Showroom
+# OGX Showroom,
 
 Reference architecture and CI for [OGX](https://github.com/ogx-ai/ogx) on Red Hat OpenShift AI (RHOAI).
 
