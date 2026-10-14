@@ -1,12 +1,6 @@
 # Local Helm values (contains credentials)
 values-local.yaml
 
-# Praxis MVP validation artifacts and MaaS restoration state
-praxis-mvp/artifacts/
-praxis-mvp/src/
-praxis-mvp/ai-gateway-controller/
-praxis-mvp/praxis-ai/
-
 # Generated config files
 config_base.yaml
 

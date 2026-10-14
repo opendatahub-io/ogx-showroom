@@ -217,11 +217,10 @@ oc get pod -l app=ogx -n redhat-ods-applications \
 ./cleanup.sh      # Remove RHOAI operator and dependencies
 ```
 
-## Praxis MVP
+## Praxis mode
 
-The Praxis ExternalModel MVP builds the unmerged integration images, swaps them
-with Kyverno, and creates an isolated test tenant without modifying OGX. See
-[`praxis-mvp/README.md`](praxis-mvp/README.md).
+See the [Praxis demo guide](praxis_mode/README.md) for prerequisites, recorded-image
+deployment, Responses enablement, paid validation and cleanup.
 
 ## Testing
 
