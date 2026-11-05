@@ -1,12 +1,9 @@
 name: Showroom Validation
 
 on:
-  # SECURITY: pull_request_target is used so that secrets are available for fork
-  # PRs. This means the PR's code runs with access to repo secrets. Before
-  # approving a workflow run from an outside contributor, carefully review ALL
-  # changes to action.yml, scripts/, and any other executable content for
-  # potential secret exfiltration.
-  pull_request_target:
+  # Secrets are not available to fork PRs, so the job only runs for PRs from
+  # branches in this repository.
+  pull_request:
     branches:
       - main
   workflow_dispatch:
@@ -25,6 +22,7 @@ on:
         type: string
 jobs:
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     concurrency:
       group: openshift-cluster-1
