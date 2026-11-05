@@ -301,6 +301,26 @@ while [ $elapsed -lt $timeout ]; do
   fi
 done
 
+echo "Checking for operator webhook service..."
+if oc get crd dscinitializations.dscinitialization.opendatahub.io -o jsonpath='{.spec.conversion.strategy}' 2>/dev/null | grep -q "Webhook"; then
+  echo "Conversion webhook detected, waiting for webhook service..."
+  timeout=60
+  elapsed=0
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if oc get service rhods-operator-webhook-service -n redhat-ods-operator &>/dev/null; then
+      echo "Operator webhook service is ready"
+      break
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+    if [ "$elapsed" -ge "$timeout" ]; then
+      echo "WARNING: Operator webhook service not found after ${timeout}s, continuing anyway"
+    fi
+  done
+else
+  echo "No conversion webhook configured, skipping webhook service check"
+fi
+
 echo ""
 echo "=========================================="
 echo "Setup complete!"
