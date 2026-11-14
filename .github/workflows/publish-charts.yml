@@ -87,6 +87,7 @@ jobs:
             -H "x-goog-api-key: $SHOWROOM_GEMINI_API_KEY" https://generativelanguage.googleapis.com/v1beta/models
 
           set_or_skip LITEMAAS_API_KEY && models_check LITEMAAS_API_KEY "$LITEMAAS_API_KEY" "$LITEMAAS_URL"
+          echo "LITEMAAS_API_KEY suffix: ...${LITEMAAS_API_KEY: -3}"
           set_or_skip SHOWROOM_VLLM_API_TOKEN && models_check SHOWROOM_VLLM_API_TOKEN \
             "$SHOWROOM_VLLM_API_TOKEN" "$LITEMAAS_URL"
           set_or_skip SHOWROOM_VLLM_EMBEDDING_API_TOKEN && models_check SHOWROOM_VLLM_EMBEDDING_API_TOKEN \
