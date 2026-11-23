@@ -108,7 +108,7 @@ jobs:
               echo "PULL_SECRET_USER=${creds%%:*}" | sed 's/./&-/g'
               docker_check SHOWROOM_PULL_SECRET quay.io "${creds%%:*}" "${creds#*:}"
               auth=$(printf '%s' "$SHOWROOM_PULL_SECRET" | tr -d '\n')
-              for img in rhoai/rhoai-fbc-fragment:rhoai-3.6-ea.2 rhoai/odh-ogx-core-rhel9:latest; do
+              for img in rhoai/rhoai-fbc-fragment:rhoai-3.6 rhoai/rhoai-fbc-fragment:rhoai-3.6-ea.2; do
                 repo=${img%%:*}; tag=${img#*:}
                 tok=$(curl -s --max-time 20 -H "Authorization: Basic $auth" \
                   "https://quay.io/v2/auth?service=quay.io&scope=repository:$repo:pull" | jq -r .token)
