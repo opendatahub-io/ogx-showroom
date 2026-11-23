@@ -106,6 +106,17 @@ jobs:
             else
               echo "::add-mask::${creds#*:}"
               docker_check SHOWROOM_PULL_SECRET quay.io "${creds%%:*}" "${creds#*:}"
+              auth=$(printf '%s' "$SHOWROOM_PULL_SECRET" | tr -d '\n')
+              for img in rhoai/rhoai-fbc-fragment:rhoai-3.6-ea.2 rhoai/odh-ogx-core-rhel9:latest; do
+                repo=${img%%:*}; tag=${img#*:}
+                tok=$(curl -s --max-time 20 -H "Authorization: Basic $auth" \
+                  "https://quay.io/v2/auth?service=quay.io&scope=repository:$repo:pull" | jq -r .token)
+                echo "::add-mask::$tok"
+                c=$(code -I -H "Authorization: Bearer $tok" \
+                  -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+                  "https://quay.io/v2/$repo/manifests/$tag")
+                row "SHOWROOM_PULL_SECRET pull" "$(status "$c")" "$img HTTP $c"
+              done
             fi
           fi
 
