@@ -28,7 +28,7 @@ SHOWROOM_OGX_IMAGE="$(read_yaml cluster.ogxImage)"
 SHOWROOM_OPERATOR_IMAGE="$(read_yaml cluster.operatorImage)"
 
 # Apply defaults for optional values
-SHOWROOM_CATALOG_IMAGE="${SHOWROOM_CATALOG_IMAGE:-quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.6-ea.2}"
+SHOWROOM_CATALOG_IMAGE="${SHOWROOM_CATALOG_IMAGE:-quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.6}"
 SHOWROOM_OPERATOR_CHANNEL="${SHOWROOM_OPERATOR_CHANNEL:-beta}"
 
 # Validate dependencies
