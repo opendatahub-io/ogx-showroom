@@ -87,7 +87,7 @@ jobs:
             -H "x-goog-api-key: $SHOWROOM_GEMINI_API_KEY" https://generativelanguage.googleapis.com/v1beta/models
 
           set_or_skip LITEMAAS_API_KEY && models_check LITEMAAS_API_KEY "$LITEMAAS_API_KEY" "$LITEMAAS_URL"
-          echo "LITEMAAS_API_KEY suffix: ...${LITEMAAS_API_KEY: -3}"
+          echo "LITEMAAS_URL=$LITEMAAS_URL"
           set_or_skip SHOWROOM_VLLM_API_TOKEN && models_check SHOWROOM_VLLM_API_TOKEN \
             "$SHOWROOM_VLLM_API_TOKEN" "$LITEMAAS_URL"
           set_or_skip SHOWROOM_VLLM_EMBEDDING_API_TOKEN && models_check SHOWROOM_VLLM_EMBEDDING_API_TOKEN \
@@ -98,20 +98,14 @@ jobs:
 
           set_or_skip QUAY_PASSWORD && docker_check QUAY_PASSWORD quay.io "$QUAY_USERNAME" "$QUAY_PASSWORD"
 
-          # Pull secret is a dockerconfigjson; check each registry entry.
+          # Pull secret is base64(user:pass) for quay.io.
           if set_or_skip SHOWROOM_PULL_SECRET; then
-            if ! jq -e .auths >/dev/null 2>&1 <<<"$SHOWROOM_PULL_SECRET"; then
-              row SHOWROOM_PULL_SECRET UNKNOWN "not a dockerconfigjson"
+            creds=$(printf '%s' "$SHOWROOM_PULL_SECRET" | base64 -d 2>/dev/null)
+            if [[ "$creds" != *:* ]]; then
+              row SHOWROOM_PULL_SECRET UNKNOWN "not base64 user:pass"
             else
-              while read -r registry; do
-                creds=$(jq -r --arg r "$registry" '.auths[$r].auth' <<<"$SHOWROOM_PULL_SECRET" | base64 -d 2>/dev/null)
-                echo "::add-mask::${creds#*:}"
-                if [ "$registry" = cloud.openshift.com ]; then
-                  row "SHOWROOM_PULL_SECRET" SKIPPED "$registry (not a registry)"
-                  continue
-                fi
-                docker_check SHOWROOM_PULL_SECRET "$registry" "${creds%%:*}" "${creds#*:}"
-              done < <(jq -r '.auths | keys[]' <<<"$SHOWROOM_PULL_SECRET")
+              echo "::add-mask::${creds#*:}"
+              docker_check SHOWROOM_PULL_SECRET quay.io "${creds%%:*}" "${creds#*:}"
             fi
           fi
 
