@@ -271,6 +271,27 @@ class OGXDemo:
             print(f"✗ Error querying vectors: {e}")
             return []
 
+    def search_vector_store(self, vector_store_id: str, query_text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+        """Search a vector store via the OpenAI-compatible endpoint."""
+        try:
+            payload = {"query": query_text, "max_num_results": top_k}
+
+            response = self.session.post(
+                f"{self.base_url}/v1/vector_stores/{vector_store_id}/search",
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+
+            if response.status_code == 200:
+                return response.json().get('data', [])
+            else:
+                print(f"✗ Failed to search vector store: {response.status_code}")
+                print(f"  Response: {response.text}")
+                return []
+        except Exception as e:
+            print(f"✗ Error searching vector store: {e}")
+            return []
+
     def chat_completion(self, query: str, context: str = "", model: str = None) -> str:
         """Generate a completion using the chat endpoint"""
         try:

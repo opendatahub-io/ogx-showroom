@@ -43,9 +43,10 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 RESPONSE_ID_FILE="${SCRIPT_DIR}/temp_response_id.txt"
+VECTOR_ID_FILE="${SCRIPT_DIR}/temp_vector_store_id.txt"
 
 # Clean up any previous test data
-rm -f "${RESPONSE_ID_FILE}"
+rm -f "${RESPONSE_ID_FILE}" "${VECTOR_ID_FILE}"
 
 echo "=========================================="
 echo "Step 1: Running initial conversation..."
@@ -62,6 +63,23 @@ fi
 SAVED_RESPONSE_ID=$(cat "${RESPONSE_ID_FILE}")
 echo ""
 echo "Saved response ID: ${SAVED_RESPONSE_ID}"
+
+echo ""
+echo "=========================================="
+echo "Step 1b: Creating vector store + chunks..."
+echo "=========================================="
+echo ""
+
+uv run "${SCRIPT_DIR}/vectorcheck.py" create "${VECTOR_ID_FILE}"
+
+if [ ! -f "${VECTOR_ID_FILE}" ]; then
+  echo "ERROR: Vector store ID file not created at ${VECTOR_ID_FILE}"
+  exit 1
+fi
+
+SAVED_VECTOR_ID=$(cat "${VECTOR_ID_FILE}")
+echo ""
+echo "Saved vector store ID: ${SAVED_VECTOR_ID}"
 
 echo ""
 echo "=========================================="
@@ -111,6 +129,14 @@ uv run "${PROJECT_ROOT}/demos/responses/demo.py" --load-id "${RESPONSE_ID_FILE}"
 
 echo ""
 echo "=========================================="
+echo "Step 3b: Querying vector store after restart..."
+echo "=========================================="
+echo ""
+
+uv run "${SCRIPT_DIR}/vectorcheck.py" verify "${VECTOR_ID_FILE}"
+
+echo ""
+echo "=========================================="
 echo "✓ Persistence test completed successfully"
 echo "=========================================="
 echo ""
@@ -118,7 +144,8 @@ echo "Verified:"
 echo "  ✓ Response ID persisted across restart: ${SAVED_RESPONSE_ID}"
 echo "  ✓ Conversation retrieved from database"
 echo "  ✓ Conversation continued from saved state"
+echo "  ✓ Vector store queryable after restart: ${SAVED_VECTOR_ID}"
 echo ""
 
 # Clean up
-rm -f "${RESPONSE_ID_FILE}"
+rm -f "${RESPONSE_ID_FILE}" "${VECTOR_ID_FILE}"
